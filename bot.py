@@ -1,12 +1,10 @@
-import logging
-import random
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import os
+import random
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 
-# Logging setup
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-# Dummy BIN and VBV data
+# Fake BIN & VBV database
 BIN_DATABASE = {
     "411111": "United States",
     "510510": "Canada",
@@ -21,59 +19,39 @@ VBV_DATABASE = {
     "530090": "VBV"
 }
 
-# Start command
-def start(update, context):
-    update.message.reply_text("नमस्ते! मैं एक Educational CC Bot हूँ।\n\nCommands:\n/start\n/bininfo <BIN>\n/vbv <BIN>\n/gen <BIN>\n\nया CARD|MM|YYYY|CVV भेजो चेकिंग के लिए।")
+# Init bot and Flask app
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+bot = Bot(token=TOKEN)
+app = Flask(__name__)
 
-# /bininfo command
-def bin_info(update, context):
+# Dispatcher setup
+dispatcher = Dispatcher(bot, None, use_context=True)
+
+# Handlers
+def start(update, context):
+    update.message.reply_text("नमस्ते! मैं CC Bot हूँ। Commands:\n/start\n/bininfo <bin>\n/vbv <bin>\n/gen <bin>\n\nया Card भेजो इस फॉर्मेट में: `4111111234567890|04|2026|123`")
+
+def bininfo(update, context):
     if len(context.args) != 1:
         update.message.reply_text("Usage: /bininfo 411111")
         return
-
     bin_code = context.args[0]
-
-    if not bin_code.isdigit() or len(bin_code) != 6:
-        update.message.reply_text("❌ BIN कोड 6 अंकों का और numeric होना चाहिए।")
-        return
-
-    country = BIN_DATABASE.get(bin_code, None)
-    vbv_status = VBV_DATABASE.get(bin_code, None)
-
+    country = BIN_DATABASE.get(bin_code)
+    vbv = VBV_DATABASE.get(bin_code)
     if country:
-        reply = f"""
-BIN Info:
-• BIN: `{bin_code}`
-• Valid: ✅ Yes
-• Country: *{country}*
-• VBV Status: *{vbv_status or 'Unknown'}*
-        """
+        update.message.reply_text(f"BIN: {bin_code}\nValid: ✅\nCountry: {country}\nVBV: {vbv}")
     else:
-        reply = f"""
-BIN Info:
-• BIN: `{bin_code}`
-• Valid: ❌ Not Found in database
-• Country: Unknown
-• VBV Status: Unknown
-        """
+        update.message.reply_text(f"BIN: {bin_code}\nValid: ❌ Not Found")
 
-    update.message.reply_text(reply, parse_mode='Markdown')
-
-# /vbv command
-def vbv_info(update, context):
+def vbv(update, context):
     if len(context.args) != 1:
         update.message.reply_text("Usage: /vbv 411111")
         return
-
     bin_code = context.args[0]
-    status = VBV_DATABASE.get(bin_code)
+    vbv_status = VBV_DATABASE.get(bin_code, "Unknown")
+    update.message.reply_text(f"VBV Status for {bin_code}: {vbv_status}")
 
-    if status:
-        update.message.reply_text(f"BIN {bin_code} is **{status}**", parse_mode='Markdown')
-    else:
-        update.message.reply_text(f"BIN {bin_code} not found in database.")
-
-# Generate Luhn-valid card
 def generate_cc_from_bin(bin_code):
     cc_number = list(bin_code)
     while len(cc_number) < 15:
@@ -81,7 +59,7 @@ def generate_cc_from_bin(bin_code):
 
     def luhn_checksum(num_list):
         digits = [int(d) for d in num_list]
-        for i in range(len(digits) - 1, -1, -2):
+        for i in range(len(digits)-2, -1, -2):
             doubled = digits[i] * 2
             digits[i] = doubled - 9 if doubled > 9 else doubled
         return sum(digits) % 10
@@ -91,71 +69,69 @@ def generate_cc_from_bin(bin_code):
     cc_number.append(str(last_digit))
     return ''.join(cc_number)
 
-# /gen command
-def generate_card(update, context):
+def gen(update, context):
     if len(context.args) != 1:
         update.message.reply_text("Usage: /gen 411111")
         return
-
     bin_code = context.args[0]
-
     if not bin_code.isdigit() or len(bin_code) != 6:
-        update.message.reply_text("❌ BIN कोड 6 अंकों का होना चाहिए।")
+        update.message.reply_text("BIN 6 digit numeric होना चाहिए")
         return
 
     card = generate_cc_from_bin(bin_code)
     exp_month = str(random.randint(1, 12)).zfill(2)
-    exp_year = str(random.randint(2026, 2030))
+    exp_year = str(random.randint(2025, 2030))
     cvv = str(random.randint(100, 999))
-
     country = BIN_DATABASE.get(bin_code, "Unknown")
     vbv_status = VBV_DATABASE.get(bin_code, "Unknown")
 
     update.message.reply_text(f"""
-Generated Test Card (Not Real):
-• Card: `{card}`
-• Expiry: `{exp_month}/{exp_year}`
-• CVV: `{cvv}`
-• Country: *{country}*
-• VBV Status: *{vbv_status}*
+Generated Card:
+Card: {card}
+Expiry: {exp_month}/{exp_year}
+CVV: {cvv}
+Country: {country}
+VBV: {vbv_status}
+    """)
 
-_This is for educational/test purposes only._
-""", parse_mode='Markdown')
-
-# Message-based CC check
-def cc_checker(update, context):
-    msg = update.message.text
-    parts = msg.strip().split('|')
-    if len(parts) == 4 and all(p.strip().isdigit() for p in parts):
-        cc, mm, yyyy, cvv = parts
-        bin_code = cc[:6]
-        country = BIN_DATABASE.get(bin_code, "Unknown")
-        vbv_status = VBV_DATABASE.get(bin_code, "Unknown")
-        update.message.reply_text(f"""
+def cc_check(update, context):
+    text = update.message.text.strip()
+    if '|' not in text: return
+    parts = text.split('|')
+    if len(parts) != 4: return
+    cc, mm, yy, cvv = parts
+    if len(cc) < 6: return
+    bin_code = cc[:6]
+    country = BIN_DATABASE.get(bin_code, "Unknown")
+    vbv = VBV_DATABASE.get(bin_code, "Unknown")
+    update.message.reply_text(f"""
 Card Check:
-• Card: `{cc}`
-• Exp: `{mm}/{yyyy}`
-• CVV: `{cvv}`
-• Country: *{country}*
-• VBV Status: *{vbv_status}*
+Card: {cc}
+Exp: {mm}/{yy}
+CVV: {cvv}
+Country: {country}
+VBV: {vbv}
+    """)
 
-*Note:* This is a fake check for demo only.
-""", parse_mode='Markdown')
+# Add handlers
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("bininfo", bininfo))
+dispatcher.add_handler(CommandHandler("vbv", vbv))
+dispatcher.add_handler(CommandHandler("gen", gen))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, cc_check))
 
-# Main function
-def main():
-    TOKEN = os.getenv("BOT_TOKEN")
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+# Flask routes
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'ok'
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("bininfo", bin_info))
-    dp.add_handler(CommandHandler("vbv", vbv_info))
-    dp.add_handler(CommandHandler("gen", generate_card))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, cc_checker))
+@app.route('/')
+def home():
+    return 'Bot is live.'
 
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
+# Set webhook on startup
+if __name__ == "__main__":
+    bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
