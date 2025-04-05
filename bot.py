@@ -27,6 +27,13 @@ def help_command(message):
 /vbv - Check if BIN is VBV or Non-VBV
 /fake - Get fake user info from a country
 
+
+/vvb - 3D Secure check
+/validate <cc> - Validate card using Luhn + BIN + length
+/custom <bin> - Custom BIN Generator
+/test <cc> - Simulate live test result
+
+
 _Created by: 𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇_"""
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
@@ -139,6 +146,79 @@ def check_single_cc(message):
         bot.reply_to(message, f"CC: {cc}\nStatus: {result}")
     except:
         bot.reply_to(message, "Use like: /chk 4147201234567890|12|2025|123")
+
+
+
+
+def luhn_checksum(card_number):
+    def digits_of(n): return [int(d) for d in str(n)]
+    digits = digits_of(card_number)
+    odd = digits[-1::-2]
+    even = digits[-2::-2]
+    return (sum(odd) + sum([sum(digits_of(d*2)) for d in even])) % 10 == 0
+
+@bot.message_handler(commands=['validate'])
+def validate_cc(message):
+    try:
+        cc = message.text.split()[1].replace(" ", "")
+        if not cc.isdigit():
+            return bot.reply_to(message, "Invalid CC format.")
+        if len(cc) < 13 or len(cc) > 19:
+            return bot.reply_to(message, "Invalid CC length.")
+        result = "Valid" if luhn_checksum(cc) else "Invalid"
+        bot.reply_to(message, f"Card: {cc}\nLuhn: {result}")
+    except:
+        bot.reply_to(message, "Usage: /validate <cc>")
+
+
+
+
+@bot.message_handler(commands=['custom'])
+def custom_bin_gen(message):
+    try:
+        bin_input = message.text.split()[1]
+        if not bin_input.isdigit() or len(bin_input) < 6:
+            return bot.reply_to(message, "Invalid BIN.")
+        generated = generate_card(bin_input)
+        bot.reply_to(message, f"Generated: {generated}")
+    except:
+        bot.reply_to(message, "Usage: /custom <bin>")
+
+def generate_card(bin_str):
+    import random
+    length = 15 if bin_str.startswith('3') else 16
+    cc = bin_str
+    while len(cc) < (length - 1):
+        cc += str(random.randint(0, 9))
+    checksum = [int(x) for x in cc]
+    total = sum(checksum[-1::-2]) + sum([sum(divmod(2 * x, 10)) for x in checksum[-2::-2]])
+    cc += str((10 - (total % 10)) % 10)
+    mm = f"{random.randint(1, 12):02d}"
+    yy = str(random.randint(2025, 2030))
+    cvv_len = 4 if cc.startswith("34") or cc.startswith("37") else 3
+    cvv = ''.join([str(random.randint(0, 9)) for _ in range(cvv_len)])
+    return f"{cc}|{mm}|{yy}|{cvv}"
+
+
+
+
+
+@bot.message_handler(commands=['test'])
+def fake_test_result(message):
+    try:
+        cc = message.text.split()[1]
+        if not cc or not cc.replace(" ", "").isdigit():
+            return bot.reply_to(message, "Invalid CC.")
+        import random
+        statuses = ['Approved', 'Declined', 'Insufficient Funds', 'CVV Mismatch', 'Expired']
+        result = random.choice(statuses)
+        bot.reply_to(message, f"Testing {cc}...\nResult: {result}")
+    except:
+        bot.reply_to(message, "Usage: /test <cc>")
+
+
+
+
 
 # /mass command
 @bot.message_handler(commands=['mass'])
