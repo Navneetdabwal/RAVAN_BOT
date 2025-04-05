@@ -63,7 +63,7 @@ def generate_cc(message):
             generated_cards.append(f"{card_number}|{mm}|{yy}|{cvv}")
         bot.reply_to(message, "\n".join(generated_cards))
     except Exception as e:
-        bot.reply_to(message, "❌ Invalid BIN format.\nUse like: `/gnt 414720xxxxxxxxxx`", parse_mode='Markdown')
+        bot.reply_to(message, "❌ Invalid BIN format.\nUse like: `/gnt 414720xxxxxxxxxx|xx|xxxx`", parse_mode='Markdown')
 
 
 
