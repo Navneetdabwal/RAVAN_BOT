@@ -1,96 +1,148 @@
 import os
-import telebot
 from flask import Flask, request
+import telebot
 import requests
+import random
 
-API_TOKEN = os.environ.get("BOT_TOKEN")
+API_TOKEN = os.getenv("BOT_TOKEN")  # Set BOT_TOKEN in environment variable
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
-@bot.message_handler(commands=['start', 'help'])
+# /start command
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to RAVAN_BOT!\n\n"
-                          "Commands:\n"
-                          "/chk - Check a single CC\n"
-                          "/mass - Check multiple CCs\n"
-                          "/bin - BIN lookup\n"
-                          "/vbv - VBV check\n"
-                          "/gen - Generate CCs from BIN\n"
-                          "/gnt - Same as /gen\n"
-                          "/fake - Fake address generator\n\n"
-                          "Created by: 『ＮＡＶＮＥＥＴ ＤＡＢＷＡＬ』")
+    bot.reply_to(message, "Welcome to RAVAN_BOT!\nUse /help to see available commands.\nCreated by: 𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇")
 
-@bot.message_handler(commands=['bin'])
-def bin_lookup(message):
-    bin_number = message.text.split(maxsplit=1)[1]
-    if len(bin_number) < 6:
-        bot.reply_to(message, "Please provide a valid BIN.")
-        return
-    res = requests.get(f"https://lookup.binlist.net/{bin_number}")
-    if res.status_code == 200:
-        data = res.json()
-        reply = f"BIN Info:\nBank: {data.get('bank', {}).get('name', 'N/A')}\nCountry: {data.get('country', {}).get('name', 'N/A')}\nScheme: {data.get('scheme', 'N/A')}\nType: {data.get('type', 'N/A')}\nBrand: {data.get('brand', 'N/A')}"
-    else:
-        reply = "Invalid BIN or not found."
-    bot.reply_to(message, reply)
+# /help command
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    help_text = """*Available Commands:*
 
+/chk - Check a single CC
+/mass - Check multiple CCs
+/gen or /gnt - Generate 15 random CCs using a BIN
+/bin - Get BIN info (validity, country, bank)
+/bininfo - Detailed BIN validation
+/vbv - Check if BIN is VBV or Non-VBV
+/fake - Get fake user info from a country
+
+_Created by: 𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇_"""
+    bot.reply_to(message, help_text, parse_mode='Markdown')
+
+# /gen or /gnt command
 @bot.message_handler(commands=['gen', 'gnt'])
 def generate_cc(message):
     try:
         bin_input = message.text.split()[1]
-    except IndexError:
-        bot.reply_to(message, "Usage: /gen xxxxxxx")
-        return
-    from random import randint
-    generated = []
-    for _ in range(15):
-        cc = bin_input
-        while len(cc) < 16:
-            cc += str(randint(0, 9))
-        exp = f"{randint(1,12):02d}|{randint(25,30)}"
-        cvv = f"{randint(100,999)}"
-        generated.append(f"{cc}|{exp}|{cvv}")
-    bot.reply_to(message, "\n".join(generated))
+        cc_list = []
+        for _ in range(15):
+            cc = bin_input + ''.join(str(random.randint(0, 9)) for _ in range(16 - len(bin_input)))
+            cc_list.append(cc)
+        bot.reply_to(message, "\n".join(cc_list))
+    except:
+        bot.reply_to(message, "Please provide BIN like `/gen 414720`", parse_mode='Markdown')
 
+# /chk command
 @bot.message_handler(commands=['chk'])
-def chk_cc(message):
-    cc = message.text.split(maxsplit=1)[1]
-    bot.reply_to(message, f"Checked: {cc}\nStatus: Live")
+def check_single_cc(message):
+    try:
+        cc = message.text.split()[1]
+        # Dummy validation (Replace with real checker API)
+        result = "Live ✅" if cc.endswith("2") else "Dead ❌"
+        bot.reply_to(message, f"CC: {cc}\nStatus: {result}")
+    except:
+        bot.reply_to(message, "Use like: /chk 4147201234567890|12|2025|123")
 
+# /mass command
 @bot.message_handler(commands=['mass'])
-def mass_chk(message):
-    ccs = message.text.split("\n")[1:]
-    response = ""
-    for cc in ccs[:15]:
-        response += f"{cc} -> Live\n"
-    bot.reply_to(message, response)
+def check_mass_cc(message):
+    try:
+        lines = message.text.split("\n")[1:]
+        if not lines:
+            bot.reply_to(message, "Please input minimum 15 CCs after /mass")
+            return
+        results = []
+        for cc in lines:
+            status = "Live ✅" if cc.strip().endswith("2") else "Dead ❌"
+            results.append(f"{cc.strip()} - {status}")
+        bot.reply_to(message, "\n".join(results))
+    except:
+        bot.reply_to(message, "Please enter CCs properly after /mass")
 
+# /bin or /bininfo
+@bot.message_handler(commands=['bin', 'bininfo'])
+def bin_lookup(message):
+    try:
+        bin_code = message.text.split()[1]
+        response = requests.get(f"https://lookup.binlist.net/{bin_code}")
+        if response.status_code == 200:
+            data = response.json()
+            info = f"""
+*BIN Info:*
+BIN: {bin_code}
+Scheme: {data.get('scheme', 'N/A')}
+Type: {data.get('type', 'N/A')}
+Brand: {data.get('brand', 'N/A')}
+Bank: {data.get('bank', {}).get('name', 'N/A')}
+Country: {data.get('country', {}).get('name', 'N/A')}
+Valid: ✅
+"""
+        else:
+            info = f"BIN {bin_code} is Invalid ❌"
+        bot.reply_to(message, info, parse_mode='Markdown')
+    except:
+        bot.reply_to(message, "Use like: /bin 414720")
+
+# /vbv command
 @bot.message_handler(commands=['vbv'])
 def vbv_check(message):
-    cc = message.text.split(maxsplit=1)[1]
-    bot.reply_to(message, f"{cc} is NON-VBV")
+    try:
+        bin_code = message.text.split()[1]
+        # Dummy logic: You can replace with real API
+        vbv_status = "VBV ✅" if bin_code.endswith("0") else "Non-VBV ❌"
+        bot.reply_to(message, f"BIN: {bin_code}\nVBV Status: {vbv_status}")
+    except:
+        bot.reply_to(message, "Use like: /vbv 414720")
 
+# /fake command
 @bot.message_handler(commands=['fake'])
-def fake_address(message):
-    country = message.text.split(maxsplit=1)[1].lower()
-    if "india" in country:
-        reply = "Name: Rahul Sharma\nAddress: 123 MG Road, Delhi\nPhone: +91 9876543210"
-    else:
-        reply = "Name: John Doe\nAddress: 123 Main St, NY, USA\nPhone: +1 555 123 4567"
-    bot.reply_to(message, reply)
+def fake_info(message):
+    try:
+        country = message.text.split()[1]
+        r = requests.get(f"https://randomuser.me/api/?nat={country.lower()}")
+        data = r.json()['results'][0]
+        fake_data = f"""
+*Fake Info ({country.upper()}):*
+Name: {data['name']['first']} {data['name']['last']}
+Address: {data['location']['street']['number']}, {data['location']['street']['name']}
+City: {data['location']['city']}
+State: {data['location']['state']}
+Postcode: {data['location']['postcode']}
+Phone: {data['phone']}
+Email: {data['email']}
+"""
+        bot.reply_to(message, fake_data, parse_mode='Markdown')
+    except:
+        bot.reply_to(message, "Use like: /fake us")
+
+# Webhook route
+@app.route('/', methods=['GET', 'HEAD'])
+def home():
+    return "RAVAN_BOT is Running!"
 
 @app.route(f"/{API_TOKEN}", methods=['POST'])
 def webhook():
     json_str = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
-    return 'ok'
+    return "!", 200
 
-@app.route("/", methods=['GET', 'HEAD'])
-def home():
+# Set webhook once app starts
+@app.before_first_request
+def setup_webhook():
+    webhook_url = f"https://<your-render-url>.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
-    bot.set_webhook(url=f"https://your-app-name.onrender.com/{API_TOKEN}")
-    return "Webhook set!"
+    bot.set_webhook(url=webhook_url)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 10000)))
