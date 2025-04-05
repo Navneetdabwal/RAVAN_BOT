@@ -140,7 +140,7 @@ def webhook():
 # Set webhook once app starts
 @app.before_first_request
 def setup_webhook():
-    webhook_url = f"https://<your-render-url>.onrender.com/{API_TOKEN}"
+    webhook_url = f"https://ravan-bot.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
 
