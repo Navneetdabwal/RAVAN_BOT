@@ -33,53 +33,58 @@ _Created by: 𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇_"""
 
 
 
-def generate_card(bin_format):
-    bin_format = bin_format.replace("x", "X").replace("*", "X")
-    card = ""
-    for digit in bin_format:
-        if digit == "X":
-            card += str(random.randint(0, 9))
-        else:
-            card += digit
-    return card
 
-def generate_cvv():
-    return str(random.randint(100, 999))
+def generate_cc(bin_format):
+    def luhn_checksum(card_number):
+        def digits_of(n):
+            return [int(d) for d in str(n)]
+        digits = digits_of(card_number)
+        odd_digits = digits[-1::-2]
+        even_digits = digits[-2::-2]
+        checksum = sum(odd_digits)
+        for d in even_digits:
+            checksum += sum(digits_of(d*2))
+        return checksum % 10
 
-def generate_expiry():
-    month = str(random.randint(1, 12)).zfill(2)
-    year = str(random.randint(25, 29))
-    return month, year
+    def complete_number(bin_part):
+        number = bin_part
+        while len(number) < 15:
+            number += str(random.randint(0,9))
+        for check_digit in range(10):
+            candidate = number + str(check_digit)
+            if luhn_checksum(candidate) == 0:
+                return candidate
+        return None
+
+    cc_list = []
+    for _ in range(15):
+        cc_number = complete_number(bin_format)
+        if cc_number:
+            mm = str(random.randint(1, 12)).zfill(2)
+            yyyy = str(random.randint(2025, 2030))
+            cvv = str(random.randint(100, 999))
+            cc_list.append(f"{cc_number}|{mm}|{yyyy}|{cvv}")
+    return cc_list
 
 @bot.message_handler(commands=['gnt', 'gen'])
-def generate_cc(message):
+def handle_generate(message):
     try:
-        cmd, bin_input = message.text.split(maxsplit=1)
-        generated_cards = []
-        for _ in range(15):
-            card_number = generate_card(bin_input)
-            mm, yy = generate_expiry()
-            cvv = generate_cvv()
-            generated_cards.append(f"{card_number}|{mm}|{yy}|{cvv}")
-        bot.reply_to(message, "\n".join(generated_cards))
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "Usage: /gnt <BIN>\nExample: /gnt 545230")
+            return
+        bin_code = parts[1]
+        if not bin_code.isdigit() or len(bin_code) < 6:
+            bot.reply_to(message, "Invalid BIN. Please provide at least 6 digits.")
+            return
+        cards = generate_cc(bin_code)
+        bot.reply_to(message, "Generated Cards:\n" + "\n".join(cards))
     except Exception as e:
-        bot.reply_to(message, "❌ Invalid BIN format.\nUse like: `/gnt 414720xxxxxxxxxx|xx|xxxx`", parse_mode='Markdown')
+        bot.reply_to(message, "Error generating cards.")
 
 
 
 
-# /gen or /gnt command
-@bot.message_handler(commands=['gen', 'gnt'])
-def generate_cc(message):
-    try:
-        bin_input = message.text.split()[1]
-        cc_list = []
-        for _ in range(15):
-            cc = bin_input + ''.join(str(random.randint(0, 9)) for _ in range(16 - len(bin_input)))
-            cc_list.append(cc)
-        bot.reply_to(message, "\n".join(cc_list))
-    except:
-        bot.reply_to(message, "Please provide BIN like `/gen 414720`", parse_mode='Markdown')
 
 # /chk command
 @bot.message_handler(commands=['chk'])
