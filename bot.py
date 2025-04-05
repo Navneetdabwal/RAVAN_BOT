@@ -86,6 +86,49 @@ def handle_generate(message):
 
 
 
+
+def generate_credit_card(bin_format):
+    bin_format = bin_format.replace('x', 'X')
+    cc_number = ''
+    for char in bin_format:
+        if char == 'X':
+            cc_number += str(random.randint(0, 9))
+        else:
+            cc_number += char
+
+    month = str(random.randint(1, 12)).zfill(2)
+    year = str(random.randint(2025, 2030))
+
+    # Determine card type and CVV length
+    if cc_number.startswith('34') or cc_number.startswith('37'):
+        # Amex
+        cvv = str(random.randint(1000, 9999))
+    else:
+        cvv = str(random.randint(100, 999))
+
+    return f"{cc_number}|{month}|{year}|{cvv}"
+
+# Example use:
+bin_input = "378282XXXXXX"  # Amex BIN example
+print(generate_credit_card(bin_input))
+
+
+
+
+@bot.message_handler(commands=['gen', 'gnt'])
+def handle_generate(message):
+    try:
+        bin_input = message.text.split()[1]
+        cc_detail = generate_credit_card(bin_input)
+        bot.reply_to(message, f"`{cc_detail}`", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "Usage: /gen 545231XXXXXXXXXX", parse_mode="Markdown")
+
+
+
+
+
+
 # /chk command
 @bot.message_handler(commands=['chk'])
 def check_single_cc(message):
