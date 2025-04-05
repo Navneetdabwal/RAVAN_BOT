@@ -4,6 +4,7 @@ import telebot
 import requests
 import random
 
+
 API_TOKEN = os.getenv("BOT_TOKEN")  # Set BOT_TOKEN in environment variable
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
@@ -28,6 +29,44 @@ def help_command(message):
 
 _Created by: 𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇_"""
     bot.reply_to(message, help_text, parse_mode='Markdown')
+
+
+
+
+def generate_card(bin_format):
+    bin_format = bin_format.replace("x", "X").replace("*", "X")
+    card = ""
+    for digit in bin_format:
+        if digit == "X":
+            card += str(random.randint(0, 9))
+        else:
+            card += digit
+    return card
+
+def generate_cvv():
+    return str(random.randint(100, 999))
+
+def generate_expiry():
+    month = str(random.randint(1, 12)).zfill(2)
+    year = str(random.randint(25, 29))
+    return month, year
+
+@bot.message_handler(commands=['gnt', 'gen'])
+def generate_cc(message):
+    try:
+        cmd, bin_input = message.text.split(maxsplit=1)
+        generated_cards = []
+        for _ in range(15):
+            card_number = generate_card(bin_input)
+            mm, yy = generate_expiry()
+            cvv = generate_cvv()
+            generated_cards.append(f"{card_number}|{mm}|{yy}|{cvv}")
+        bot.reply_to(message, "\n".join(generated_cards))
+    except Exception as e:
+        bot.reply_to(message, "❌ Invalid BIN format.\nUse like: `/gnt 414720xxxxxxxxxx`", parse_mode='Markdown')
+
+
+
 
 # /gen or /gnt command
 @bot.message_handler(commands=['gen', 'gnt'])
