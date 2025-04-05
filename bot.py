@@ -1,137 +1,141 @@
+
 import os
 import random
+import string
+import requests
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+import telebot
 
-# Fake BIN & VBV database
-BIN_DATABASE = {
-    "411111": "United States",
-    "510510": "Canada",
-    "520082": "India",
-    "530090": "Brazil"
-}
-
-VBV_DATABASE = {
-    "411111": "NON-VBV",
-    "510510": "VBV",
-    "520082": "NON-VBV",
-    "530090": "VBV"
-}
-
-# Init bot and Flask app
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-bot = Bot(token=TOKEN)
+API_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
-# Dispatcher setup
-dispatcher = Dispatcher(bot, None, use_context=True)
+def generate_cc(bin_input, amount=15):
+    result = []
+    while len(result) < amount:
+        cc = bin_input
+        while len(cc) < 16:
+            cc += str(random.randint(0, 9))
+        mm = str(random.randint(1, 12)).zfill(2)
+        yy = str(random.randint(25, 30))
+        cvv = str(random.randint(100, 999))
+        result.append(f"{cc}|{mm}|{yy}|{cvv}")
+    return result
 
-# Handlers
-def start(update, context):
-    update.message.reply_text("नमस्ते! मैं CC Bot हूँ। Commands:\n/start\n/bininfo <bin>\n/vbv <bin>\n/gen <bin>\n\nया Card भेजो इस फॉर्मेट में: `4111111234567890|04|2026|123`")
+def get_bin_info(bin_number):
+    try:
+        res = requests.get(f"https://lookup.binlist.net/{bin_number}")
+        if res.status_code == 200:
+            data = res.json()
+            info = f"""
+Valid BIN: Yes
+Scheme: {data.get('scheme', 'N/A')}
+Type: {data.get('type', 'N/A')}
+Brand: {data.get('brand', 'N/A')}
+Bank: {data['bank']['name'] if 'bank' in data else 'N/A'}
+Country: {data['country']['name'] if 'country' in data else 'N/A'}
+"""
+            return info
+        else:
+            return "Invalid BIN or not found!"
+    except:
+        return "Error checking BIN!"
 
-def bininfo(update, context):
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /bininfo 411111")
-        return
-    bin_code = context.args[0]
-    country = BIN_DATABASE.get(bin_code)
-    vbv = VBV_DATABASE.get(bin_code)
-    if country:
-        update.message.reply_text(f"BIN: {bin_code}\nValid: ✅\nCountry: {country}\nVBV: {vbv}")
-    else:
-        update.message.reply_text(f"BIN: {bin_code}\nValid: ❌ Not Found")
+def get_fake_address(country):
+    try:
+        res = requests.get(f"https://randomuser.me/api/?nat={country[:2].lower()}")
+        if res.status_code == 200:
+            d = res.json()['results'][0]
+            return f"{d['name']['first']} {d['name']['last']}, {d['location']['street']['number']} {d['location']['street']['name']}, {d['location']['city']}, {d['location']['state']}, {d['location']['country']} - {d['location']['postcode']}"
+        else:
+            return "Couldn't fetch fake address!"
+    except:
+        return "Error generating address!"
 
-def vbv(update, context):
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /vbv 411111")
-        return
-    bin_code = context.args[0]
-    vbv_status = VBV_DATABASE.get(bin_code, "Unknown")
-    update.message.reply_text(f"VBV Status for {bin_code}: {vbv_status}")
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    help_text = (
+        "Welcome to RAVAN_BOT!\n"
+        "Created by ⇝ 『𝙉𝘼𝙑𝙉𝙀𝙀𝙏 𝘿𝘼𝘽𝙒𝘼𝙇』\n\n"
+        "Available Commands:\n"
+        "/gen <bin> - Generate 15 CCs\n"
+        "/gnt <bin> - Same as /gen\n"
+        "/chk <cc> - Check if CC is live\n"
+        "/mass - Check multiple CCs (paste list)\n"
+        "/bin <bin> - BIN info & validation\n"
+        "/vbv <bin> - VBV status (Mock)\n"
+        "/fake <country> - Fake address\n"
+        "/help - Show help"
+    )
+    bot.reply_to(message, help_text)
 
-def generate_cc_from_bin(bin_code):
-    cc_number = list(bin_code)
-    while len(cc_number) < 15:
-        cc_number.append(str(random.randint(0, 9)))
+@bot.message_handler(commands=['gen', 'gnt'])
+def handle_gen(message):
+    try:
+        bin_input = message.text.split()[1]
+        if len(bin_input) < 6:
+            bot.reply_to(message, "BIN must be at least 6 digits.")
+            return
+        cards = generate_cc(bin_input)
+        bot.reply_to(message, "\n".join(cards))
+    except:
+        bot.reply_to(message, "Usage: /gen 123456")
 
-    def luhn_checksum(num_list):
-        digits = [int(d) for d in num_list]
-        for i in range(len(digits)-2, -1, -2):
-            doubled = digits[i] * 2
-            digits[i] = doubled - 9 if doubled > 9 else doubled
-        return sum(digits) % 10
+@bot.message_handler(commands=['bin'])
+def handle_bin(message):
+    try:
+        bin_number = message.text.split()[1]
+        info = get_bin_info(bin_number)
+        bot.reply_to(message, info)
+    except:
+        bot.reply_to(message, "Usage: /bin <bin>")
 
-    checksum = luhn_checksum(cc_number)
-    last_digit = (10 - checksum) % 10
-    cc_number.append(str(last_digit))
-    return ''.join(cc_number)
+@bot.message_handler(commands=['vbv'])
+def handle_vbv(message):
+    try:
+        bin_number = message.text.split()[1]
+        mock = "VBV" if int(bin_number[-1]) % 2 == 0 else "NON-VBV"
+        bot.reply_to(message, f"{bin_number} is {mock}")
+    except:
+        bot.reply_to(message, "Usage: /vbv <bin>")
 
-def gen(update, context):
-    if len(context.args) != 1:
-        update.message.reply_text("Usage: /gen 411111")
-        return
-    bin_code = context.args[0]
-    if not bin_code.isdigit() or len(bin_code) != 6:
-        update.message.reply_text("BIN 6 digit numeric होना चाहिए")
-        return
+@bot.message_handler(commands=['fake'])
+def handle_fake(message):
+    try:
+        country = message.text.split()[1]
+        address = get_fake_address(country)
+        bot.reply_to(message, address)
+    except:
+        bot.reply_to(message, "Usage: /fake <country>")
 
-    card = generate_cc_from_bin(bin_code)
-    exp_month = str(random.randint(1, 12)).zfill(2)
-    exp_year = str(random.randint(2025, 2030))
-    cvv = str(random.randint(100, 999))
-    country = BIN_DATABASE.get(bin_code, "Unknown")
-    vbv_status = VBV_DATABASE.get(bin_code, "Unknown")
+@bot.message_handler(commands=['chk'])
+def handle_chk(message):
+    cc = message.text.split()[1]
+    bot.reply_to(message, f"Card {cc} is Live (Mock Result)")
 
-    update.message.reply_text(f"""
-Generated Card:
-Card: {card}
-Expiry: {exp_month}/{exp_year}
-CVV: {cvv}
-Country: {country}
-VBV: {vbv_status}
-    """)
+@bot.message_handler(commands=['mass'])
+def handle_mass(message):
+    try:
+        ccs = message.reply_to_message.text.splitlines()
+        result = ""
+        for c in ccs[:15]:
+            result += f"{c} => Live (Mock)\n"
+        bot.reply_to(message, result)
+    except:
+        bot.reply_to(message, "Reply to a message containing CC list with /mass")
 
-def cc_check(update, context):
-    text = update.message.text.strip()
-    if '|' not in text: return
-    parts = text.split('|')
-    if len(parts) != 4: return
-    cc, mm, yy, cvv = parts
-    if len(cc) < 6: return
-    bin_code = cc[:6]
-    country = BIN_DATABASE.get(bin_code, "Unknown")
-    vbv = VBV_DATABASE.get(bin_code, "Unknown")
-    update.message.reply_text(f"""
-Card Check:
-Card: {cc}
-Exp: {mm}/{yy}
-CVV: {cvv}
-Country: {country}
-VBV: {vbv}
-    """)
-
-# Add handlers
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("bininfo", bininfo))
-dispatcher.add_handler(CommandHandler("vbv", vbv))
-dispatcher.add_handler(CommandHandler("gen", gen))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, cc_check))
-
-# Flask routes
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return 'ok'
+@app.route(f"/{API_TOKEN}", methods=['POST'])
+def telegram_webhook():
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "OK", 200
 
 @app.route('/')
 def home():
-    return 'Bot is live.'
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://<your-render-url>.onrender.com/{API_TOKEN}")
+    return "Webhook set", 200
 
-# Set webhook on startup
-if __name__ == "__main__":
-    bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        
