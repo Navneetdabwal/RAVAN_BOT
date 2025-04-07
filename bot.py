@@ -280,65 +280,59 @@ def vbv_check(message):
 
 
 
+
+
+
+
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from faker import Faker
 import pycountry
 
-# Store user session for country selection
-user_country_selection = {}
+user_sessions = {}
 
-# /fake command
+# /fake command handler
 @bot.message_handler(commands=['fake'])
-def send_country_list(message):
-    markup = InlineKeyboardMarkup()
+def send_country_selection(message):
+    keyboard = InlineKeyboardMarkup(row_width=3)
     countries = list(pycountry.countries)
-    # Create inline buttons, 3 per row
-    row = []
-    for index, country in enumerate(countries):
-        row.append(InlineKeyboardButton(country.name, callback_data=f"country_{country.alpha_2}"))
-        if len(row) == 3:
-            markup.row(*row)
-            row = []
-    if row:
-        markup.row(*row)
-    
-    msg = bot.send_message(message.chat.id, "Select a country:", reply_markup=markup)
-    user_country_selection[message.chat.id] = msg.message_id
+    buttons = [InlineKeyboardButton(text=country.name, callback_data=f"fake_{country.alpha_2}") for country in countries[:99]]
+    keyboard.add(*buttons)
+    msg = bot.send_message(message.chat.id, "🌍 Choose a country to generate a fake identity:", reply_markup=keyboard)
+    user_sessions[message.chat.id] = msg.message_id  # Store message ID to delete it later
 
-# Handle country selection
-@bot.callback_query_handler(func=lambda call: call.data.startswith("country_"))
-def handle_country_selection(call: CallbackQuery):
-    country_code = call.data.split("_")[1]
-    fake = Faker(locale=country_code.lower())
+# Callback handler for country selection
+@bot.callback_query_handler(func=lambda call: call.data.startswith('fake_'))
+def handle_country_callback(call: CallbackQuery):
+    code = call.data.split('_')[1]
+    faker = Faker(code.lower())
 
+    name = faker.name()
+    address = faker.address().replace("\n", ", ")
+    phone = faker.phone_number()
+    email = faker.email()
+    city = faker.city()
+    postcode = faker.postcode()
+    state = faker.state() if hasattr(faker, 'state') else 'N/A'
+
+    result = (
+        f"🕵️‍♂️ *Fake Identity for {pycountry.countries.get(alpha_2=code).name}*\n\n"
+        f"*Name:* `{name}`\n"
+        f"*Email:* `{email}`\n"
+        f"*Phone:* `{phone}`\n"
+        f"*Address:* `{address}`\n"
+        f"*City:* `{city}`\n"
+        f"*District/State:* `{state}`\n"
+        f"*Postal Code:* `{postcode}`"
+    )
+
+    # Delete previous country selection message
     try:
-        full_name = fake.name()
-        address = fake.street_address()
-        city = fake.city()
-        state = fake.state()
-        postal = fake.postcode()
-        phone = fake.phone_number()
-        email = fake.email()
+        bot.delete_message(call.message.chat.id, user_sessions.get(call.message.chat.id, call.message.message_id))
+    except:
+        pass
 
-        result = f"""**Fake Info for {pycountry.countries.get(alpha_2=country_code).name}**:
-**Name:** {full_name}
-**Address:** {address}
-**City:** {city}
-**District/State:** {state}
-**Postal Code:** {postal}
-**Pincode:** {postal}
-**Phone:** {phone}
-**Email:** {email}"""
+    bot.send_message(call.message.chat.id, result, parse_mode='Markdown')
 
-        # Delete country select message
-        if call.message.chat.id in user_country_selection:
-            bot.delete_message(call.message.chat.id, user_country_selection[call.message.chat.id])
-            del user_country_selection[call.message.chat.id]
-
-        bot.send_message(call.message.chat.id, result, parse_mode='Markdown')
-
-    except Exception as e:
-        bot.send_message(call.message.chat.id, "Failed to generate fake data for this country.")
 
 
 
