@@ -2,4 +2,4 @@ requests
 Flask==2.2.5
 pyTelegramBotAPI==4.14.0
 requests==2.31.0
-pip install faker pycountry
+pycountry
