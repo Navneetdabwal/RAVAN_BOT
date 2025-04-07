@@ -271,26 +271,83 @@ def vbv_check(message):
     except:
         bot.reply_to(message, "Use like: /vbv 414720")
 
+
+
+
+
+
+
+
+
+
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from faker import Faker
+import pycountry
+
+# Store user session for country selection
+user_country_selection = {}
+
 # /fake command
 @bot.message_handler(commands=['fake'])
-def fake_info(message):
+def send_country_list(message):
+    markup = InlineKeyboardMarkup()
+    countries = list(pycountry.countries)
+    # Create inline buttons, 3 per row
+    row = []
+    for index, country in enumerate(countries):
+        row.append(InlineKeyboardButton(country.name, callback_data=f"country_{country.alpha_2}"))
+        if len(row) == 3:
+            markup.row(*row)
+            row = []
+    if row:
+        markup.row(*row)
+    
+    msg = bot.send_message(message.chat.id, "Select a country:", reply_markup=markup)
+    user_country_selection[message.chat.id] = msg.message_id
+
+# Handle country selection
+@bot.callback_query_handler(func=lambda call: call.data.startswith("country_"))
+def handle_country_selection(call: CallbackQuery):
+    country_code = call.data.split("_")[1]
+    fake = Faker(locale=country_code.lower())
+
     try:
-        country = message.text.split()[1]
-        r = requests.get(f"https://randomuser.me/api/?nat={country.lower()}")
-        data = r.json()['results'][0]
-        fake_data = f"""
-*Fake Info ({country.upper()}):*
-Name: {data['name']['first']} {data['name']['last']}
-Address: {data['location']['street']['number']}, {data['location']['street']['name']}
-City: {data['location']['city']}
-State: {data['location']['state']}
-Postcode: {data['location']['postcode']}
-Phone: {data['phone']}
-Email: {data['email']}
-"""
-        bot.reply_to(message, fake_data, parse_mode='Markdown')
-    except:
-        bot.reply_to(message, "Use like: /fake us")
+        full_name = fake.name()
+        address = fake.street_address()
+        city = fake.city()
+        state = fake.state()
+        postal = fake.postcode()
+        phone = fake.phone_number()
+        email = fake.email()
+
+        result = f"""**Fake Info for {pycountry.countries.get(alpha_2=country_code).name}**:
+**Name:** {full_name}
+**Address:** {address}
+**City:** {city}
+**District/State:** {state}
+**Postal Code:** {postal}
+**Pincode:** {postal}
+**Phone:** {phone}
+**Email:** {email}"""
+
+        # Delete country select message
+        if call.message.chat.id in user_country_selection:
+            bot.delete_message(call.message.chat.id, user_country_selection[call.message.chat.id])
+            del user_country_selection[call.message.chat.id]
+
+        bot.send_message(call.message.chat.id, result, parse_mode='Markdown')
+
+    except Exception as e:
+        bot.send_message(call.message.chat.id, "Failed to generate fake data for this country.")
+
+
+
+
+
+
+
+
+
 
 # Webhook route
 @app.route('/', methods=['GET', 'HEAD'])
