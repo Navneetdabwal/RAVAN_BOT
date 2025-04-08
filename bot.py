@@ -364,3 +364,151 @@ def setup_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 10000)))
+
+
+
+
+
+
+
+
+
+
+
+# main.py - Combined BINVERSE + FAKEID++ Telegram Bot
+from flask import Flask, request
+import requests
+import random
+from faker import Faker
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, CallbackContext, Updater, CallbackQueryHandler
+import os
+
+app = Flask(__name__)
+TOKEN = os.environ.get("BOT_TOKEN")
+fake = Faker()
+
+updater = Updater(token=TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+
+# BIN CHECKER
+def bin_command(update: Update, context: CallbackContext):
+    if len(context.args) == 0:
+        update.message.reply_text("Use: /bin <BIN>")
+        return
+    bin_number = context.args[0]
+    res = requests.get(f"https://lookup.binlist.net/{bin_number}")
+    if res.status_code != 200:
+        update.message.reply_text("BIN not found or invalid.")
+        return
+    data = res.json()
+    msg = f"**BIN Info:**\n\n"
+    msg += f"**Scheme:** {data.get('scheme', 'N/A')}\n"
+    msg += f"**Type:** {data.get('type', 'N/A')}\n"
+    msg += f"**Brand:** {data.get('brand', 'N/A')}\n"
+    msg += f"**Bank:** {data.get('bank', {}).get('name', 'N/A')}\n"
+    msg += f"**Country:** {data.get('country', {}).get('name', 'N/A')}\n"
+    update.message.reply_text(msg, parse_mode="Markdown")
+
+# RISK SCORE
+def risk_command(update: Update, context: CallbackContext):
+    if len(context.args) == 0:
+        update.message.reply_text("Use: /risk <BIN>")
+        return
+    score = random.randint(1, 100)
+    level = "LOW"
+    if score > 70:
+        level = "HIGH"
+    elif score > 40:
+        level = "MEDIUM"
+    update.message.reply_text(f"**BIN Risk Score:** {score}/100\nLevel: {level}", parse_mode="Markdown")
+
+# DARK WEB CHECK (Simulated)
+def darkweb_command(update: Update, context: CallbackContext):
+    if len(context.args) == 0:
+        update.message.reply_text("Use: /darkweb <BIN>")
+        return
+    found = random.choice([True, False])
+    msg = "âš ï¸ BIN Found on Dark Web!" if found else "âœ… BIN Not found on Dark Web."
+    update.message.reply_text(msg)
+
+# CREDIT LIMIT PREDICTOR
+def limit_command(update: Update, context: CallbackContext):
+    if len(context.args) == 0:
+        update.message.reply_text("Use: /limit <BIN>")
+        return
+    limit = random.choice(["$500-$1500", "$2000-$5000", "$5000-$10,000", "$10,000+"])
+    update.message.reply_text(f"Estimated Credit Limit: {limit}")
+
+# CUSTOM BIN GENERATOR
+def custombin_command(update: Update, context: CallbackContext):
+    if len(context.args) < 4:
+        update.message.reply_text("Use: /custombin <bin> <mm> <yyyy> <cvv_len>")
+        return
+    bin_prefix, mm, yyyy, cvv_len = context.args[:4]
+    num = bin_prefix + "".join([str(random.randint(0,9)) for _ in range(16-len(bin_prefix))])
+    cvv = "".join([str(random.randint(0,9)) for _ in range(int(cvv_len))])
+    update.message.reply_text(f"{num}|{mm}|{yyyy}|{cvv}")
+
+# COUNTRY BIN GRAPH SIMULATED
+def bingraph_command(update: Update, context: CallbackContext):
+    update.message.reply_text("Country-wise BIN Graph coming soon with chart image!")
+
+# --- FAKEID++ PART ---
+
+countries = {
+    "US": "United States",
+    "IN": "India",
+    "UK": "United Kingdom",
+    "AU": "Australia",
+    "CA": "Canada"
+}
+
+def fake_command(update: Update, context: CallbackContext):
+    keyboard = [[InlineKeyboardButton(name, callback_data=code)] for code, name in countries.items()]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text("Select a country:", reply_markup=reply_markup)
+
+def generate_fake_identity(code):
+    Faker.seed(random.randint(1000,9999))
+    fake = Faker()
+    name = fake.name()
+    email = fake.email()
+    phone = fake.phone_number()
+    address = fake.address().replace("\n", ", ")
+    city = fake.city()
+    zip_code = fake.postcode()
+    return f"**{countries[code]} Fake ID:**\n\nName: {name}\nEmail: {email}\nPhone: {phone}\nAddress: {address}\nCity: {city}\nZIP: {zip_code}"
+
+def button_callback(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    code = query.data
+    msg = generate_fake_identity(code)
+    context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
+    context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+
+# Registering all handlers
+dispatcher.add_handler(CommandHandler("bin", bin_command))
+dispatcher.add_handler(CommandHandler("risk", risk_command))
+dispatcher.add_handler(CommandHandler("darkweb", darkweb_command))
+dispatcher.add_handler(CommandHandler("limit", limit_command))
+dispatcher.add_handler(CommandHandler("custombin", custombin_command))
+dispatcher.add_handler(CommandHandler("bingraph", bingraph_command))
+dispatcher.add_handler(CommandHandler("fake", fake_command))
+dispatcher.add_handler(CallbackQueryHandler(button_callback))
+
+# Flask webhook
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), updater.bot)
+    dispatcher.process_update(update)
+    return "ok"
+
+@app.route("/", methods=["GET"])
+def index():
+    return "BOT RUNNING"
+
+if __name__ == "__main__":
+    updater.bot.set_webhook(f"https://<your-render-url>.onrender.com/{TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
