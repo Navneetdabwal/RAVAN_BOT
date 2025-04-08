@@ -372,10 +372,7 @@ if __name__ == "__main__":
 
 
 
-
-
-
-# main.py - Combined BINVERSE + FAKEID++ Telegram Bot
+# bot.py - Combined BINVERSE + FAKEID++ Telegram Bot
 from flask import Flask, request
 import requests
 import random
@@ -423,16 +420,16 @@ def risk_command(update: Update, context: CallbackContext):
         level = "MEDIUM"
     update.message.reply_text(f"**BIN Risk Score:** {score}/100\nLevel: {level}", parse_mode="Markdown")
 
-# DARK WEB CHECK (Simulated)
+# DARK WEB CHECK
 def darkweb_command(update: Update, context: CallbackContext):
     if len(context.args) == 0:
         update.message.reply_text("Use: /darkweb <BIN>")
         return
     found = random.choice([True, False])
-    msg = "âš ï¸ BIN Found on Dark Web!" if found else "âœ… BIN Not found on Dark Web."
+    msg = "⚠️ BIN Found on Dark Web!" if found else "✅ BIN Not found on Dark Web."
     update.message.reply_text(msg)
 
-# CREDIT LIMIT PREDICTOR
+# CREDIT LIMIT
 def limit_command(update: Update, context: CallbackContext):
     if len(context.args) == 0:
         update.message.reply_text("Use: /limit <BIN>")
@@ -440,7 +437,7 @@ def limit_command(update: Update, context: CallbackContext):
     limit = random.choice(["$500-$1500", "$2000-$5000", "$5000-$10,000", "$10,000+"])
     update.message.reply_text(f"Estimated Credit Limit: {limit}")
 
-# CUSTOM BIN GENERATOR
+# CUSTOM BIN GEN
 def custombin_command(update: Update, context: CallbackContext):
     if len(context.args) < 4:
         update.message.reply_text("Use: /custombin <bin> <mm> <yyyy> <cvv_len>")
@@ -450,11 +447,11 @@ def custombin_command(update: Update, context: CallbackContext):
     cvv = "".join([str(random.randint(0,9)) for _ in range(int(cvv_len))])
     update.message.reply_text(f"{num}|{mm}|{yyyy}|{cvv}")
 
-# COUNTRY BIN GRAPH SIMULATED
+# SIMULATED GRAPH
 def bingraph_command(update: Update, context: CallbackContext):
-    update.message.reply_text("Country-wise BIN Graph coming soon with chart image!")
+    update.message.reply_text("Country-wise BIN Graph coming soon!")
 
-# --- FAKEID++ PART ---
+# --- FAKEID++ ---
 
 countries = {
     "US": "United States",
@@ -488,7 +485,7 @@ def button_callback(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=query.message.chat_id, text=msg, parse_mode="Markdown")
     context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
 
-# Registering all handlers
+# Register handlers
 dispatcher.add_handler(CommandHandler("bin", bin_command))
 dispatcher.add_handler(CommandHandler("risk", risk_command))
 dispatcher.add_handler(CommandHandler("darkweb", darkweb_command))
@@ -498,7 +495,7 @@ dispatcher.add_handler(CommandHandler("bingraph", bingraph_command))
 dispatcher.add_handler(CommandHandler("fake", fake_command))
 dispatcher.add_handler(CallbackQueryHandler(button_callback))
 
-# Flask webhook
+# Flask webhook setup
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), updater.bot)
@@ -510,5 +507,5 @@ def index():
     return "BOT RUNNING"
 
 if __name__ == "__main__":
-    updater.bot.set_webhook(f"https://<your-render-url>.onrender.com/{TOKEN}")
+    updater.bot.set_webhook(f"https://ravan-bot.onrender.com/{TOKEN}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
